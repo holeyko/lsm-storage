@@ -9,3 +9,5 @@ Storage supports methods:
 - `allTo` &#8211; a thread-safe operation, that lazy return all entries in the storage exclusive to passed key.
 - `compact` &#8211; a operation, that compacts SSTables in one SSTable.
 - `close` &#8211; a thread-safe operation, that safity saves entries from the memory table to a disk.
+
+Project was written on Java 21 with preview features.
