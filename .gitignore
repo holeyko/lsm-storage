@@ -1,0 +1,9 @@
+### IDEA ###
+.idea/
+build/
+
+### Gradle ###
+.gradle/
+
+### App Folder ###
+data/
