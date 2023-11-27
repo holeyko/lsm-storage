@@ -1,5 +1,6 @@
 package com.holeyko.iterators;
 
+
 import com.holeyko.entry.Entry;
 
 import java.lang.foreign.MemorySegment;

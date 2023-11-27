@@ -1,11 +1,11 @@
-package com.holeyko.dao;
+package com.holeyko.sstable;
 
 import com.holeyko.entry.BaseEntry;
-import com.holeyko.utils.FileUtils;
-import com.holeyko.utils.MemorySegmentUtils;
 import com.holeyko.entry.Entry;
 import com.holeyko.iterators.FutureIterator;
 import com.holeyko.iterators.LazyIterator;
+import com.holeyko.utils.FileUtils;
+import com.holeyko.utils.MemorySegmentUtils;
 import com.holeyko.utils.NumberUtils;
 
 import java.io.IOException;
@@ -22,18 +22,17 @@ import java.util.NoSuchElementException;
 
 import static java.nio.file.StandardOpenOption.CREATE;
 import static java.nio.file.StandardOpenOption.READ;
+import static java.nio.file.StandardOpenOption.TRUNCATE_EXISTING;
 import static java.nio.file.StandardOpenOption.WRITE;
 
 public class SSTable {
-    private final Path parentPath;
     private final long id;
     private final MemorySegment data;
     private final int countRecords;
 
-    public SSTable(Path parentPath, long id, Arena arena) throws IOException {
-        this.parentPath = parentPath;
+    public SSTable(Path path, long id, Arena arena) throws IOException {
         this.id = id;
-        Path dataFile = getDataFilePath();
+        Path dataFile = FileUtils.makePath(path, Long.toString(id), FileUtils.DATA_FILE_EXT);
 
         try (FileChannel dataFileChannel = FileChannel.open(dataFile, READ)) {
             this.data = dataFileChannel.map(MapMode.READ_ONLY, 0, dataFileChannel.size(), arena);
@@ -90,6 +89,7 @@ public class SSTable {
                 l = mid;
             }
         }
+
         return lowerBound ? -r - 1 : -l - 1;
     }
 
@@ -126,7 +126,7 @@ public class SSTable {
     }
 
     private long getOffset(int index) {
-        return data.get(ValueLayout.JAVA_LONG, index * Long.BYTES);
+        return data.get(ValueLayout.JAVA_LONG, (long) index * Long.BYTES);
     }
 
     private Iterator<Long> getOffsetIterator(int fromIndex, int toIndex) {
@@ -148,34 +148,33 @@ public class SSTable {
         };
     }
 
-    public static void save(
+    public static boolean save(
             Path prefix,
             long id,
             Iterable<Entry<MemorySegment>> entries,
             Arena arena
     ) throws IOException {
+        long dataSize = 0;
+        int countRecords = 0;
+        for (Entry<MemorySegment> entry : entries) {
+            ++countRecords;
+            dataSize += 2;
+            MemorySegment key = entry.key();
+            MemorySegment value = entry.value();
+
+            dataSize += NumberUtils.toBytes(key.byteSize()).length + key.byteSize();
+            if (value != null) {
+                dataSize += NumberUtils.toBytes(value.byteSize()).length + value.byteSize();
+            }
+        }
+
+        if (countRecords == 0) {
+            return false;
+        }
+
         Path tmpDataFile = FileUtils.makePath(prefix, Long.toString(id), FileUtils.TMP_FILE_EXT);
-        try (FileChannel dataFileChannel = FileChannel.open(tmpDataFile, CREATE, WRITE, READ)) {
-            long dataSize = 0;
-            int countRecords = 0;
-            for (Entry<MemorySegment> entry : entries) {
-                ++countRecords;
-                dataSize += 2;
-                MemorySegment key = entry.key();
-                MemorySegment value = entry.value();
-
-                dataSize += NumberUtils.toBytes(key.byteSize()).length + key.byteSize();
-                if (value != null) {
-                    dataSize += NumberUtils.toBytes(value.byteSize()).length + value.byteSize();
-                }
-            }
-
-            if (countRecords == 0) {
-                Files.deleteIfExists(tmpDataFile);
-                return;
-            }
-
-            long dataOffset = countRecords * Long.BYTES;
+        try (FileChannel dataFileChannel = FileChannel.open(tmpDataFile, CREATE, WRITE, READ, TRUNCATE_EXISTING)) {
+            long dataOffset = (long) countRecords * Long.BYTES;
             MemorySegment dataSegment = dataFileChannel.map(
                 MapMode.READ_WRITE,
                 0,
@@ -185,7 +184,7 @@ public class SSTable {
 
             int curEntryNumber = 0;
             for (Entry<MemorySegment> entry : entries) {
-                dataSegment.set(ValueLayout.JAVA_LONG, curEntryNumber * Long.BYTES, dataOffset);
+                dataSegment.set(ValueLayout.JAVA_LONG, (long) curEntryNumber * Long.BYTES, dataOffset);
 
                 MemorySegment key = entry.key();
                 MemorySegment value = entry.value();
@@ -216,14 +215,7 @@ public class SSTable {
 
         Path dataFile = FileUtils.makePath(prefix, Long.toString(id), FileUtils.DATA_FILE_EXT);
         Files.move(tmpDataFile, dataFile, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-    }
-
-    public void delete() throws IOException {
-        Files.deleteIfExists(getDataFilePath());
-    }
-
-    private Path getDataFilePath() {
-        return FileUtils.makePath(parentPath, Long.toString(id), FileUtils.DATA_FILE_EXT);
+        return true;
     }
 
     public long getId() {
@@ -257,13 +249,7 @@ public class SSTable {
         private final long valueSize;
         private final long valueOffset;
 
-        private RecordInfo(
-                byte meta,
-                long keySize,
-                long keyOffset,
-                long valueSize,
-                long valueOffset
-        ) {
+        private RecordInfo(byte meta, long keySize, long keyOffset, long valueSize, long valueOffset) {
             this.meta = meta;
             this.keySize = keySize;
             this.keyOffset = keyOffset;

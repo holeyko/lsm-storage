@@ -58,7 +58,7 @@ public class Main {
     }
     
     static Dao<MemorySegment, Entry<MemorySegment>> getDao() throws IOException {
-        return new LSMDao(new Config(path));
+        return new LSMDao(new Config(path, Long.MAX_VALUE));
     }
     
     static Entry<MemorySegment> makeEntry(String key, String val) {
