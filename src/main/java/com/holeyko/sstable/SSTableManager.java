@@ -135,7 +135,7 @@ public class SSTableManager {
                     safeSSTable.setDeleted();
                     deleteSSTable(safeSSTable);
                 }
-            } catch (IOException e) {
+            } catch (Exception e) {
                 log.log(Level.WARNING, "Compaction was failed", e);
             }
         });
@@ -146,7 +146,7 @@ public class SSTableManager {
             try {
                 safeSSTables.remove(safeSSTable);
                 safeSSTable.delete(path);
-            } catch (IOException e) {
+            } catch (Exception e) {
                 log.log(
                         Level.WARNING,
                         "Deleting was failed for SSTable[id=%d]".formatted(safeSSTable.ssTable().getId()),

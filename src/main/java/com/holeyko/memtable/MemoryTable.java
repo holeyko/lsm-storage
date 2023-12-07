@@ -9,12 +9,15 @@ import com.holeyko.utils.MemorySegmentUtils;
 
 import java.io.IOException;
 import java.lang.foreign.MemorySegment;
+import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.NavigableMap;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -136,8 +139,9 @@ public class MemoryTable {
             wasDropped.set(true);
 
             try {
-                ssTableManager.saveEntries(() -> flushTable.get().values().iterator());
-            } catch (IOException e) {
+                ArrayList<Entry<MemorySegment>> entries = new ArrayList<>(flushTable.get().values());
+                ssTableManager.saveEntries(entries::iterator);
+            } catch (Exception e) {
                 log.log(Level.WARNING, "Flushing was failed", e);
             } finally {
                 flushTable.set(null);
@@ -155,8 +159,8 @@ public class MemoryTable {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         } catch (ExecutionException e) {
+            log.log(Level.WARNING, "Closing was failed", e.getCause());
             if (e.getCause() instanceof IOException ioEx) {
-                log.log(Level.WARNING, "Closing was failed", e);
                 throw ioEx;
             }
         } finally {
